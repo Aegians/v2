@@ -1,298 +1,366 @@
---// Cache
 
-local loadstring, game, getgenv, setclipboard = loadstring, game, getgenv, setclipboard
+pcall(function()
+	getgenv().Aimbot.Functions:Exit()
+end)
 
---// Loaded check
+--// Environment
 
-if getgenv().Aimbot then return end
+getgenv().Aimbot = {}
+local Environment = getgenv().Aimbot
 
---// Load Aimbot V2 (Raw)
+--// Services
 
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Exunys/Aimbot-V2/main/Resources/Scripts/Raw%20Main.lua"))()
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+local TweenService = game:GetService("TweenService")
+local StarterGui = game:GetService("StarterGui")
+local Players = game:GetService("Players")
+local Camera = game:GetService("Workspace").CurrentCamera
 
 --// Variables
 
-local Aimbot = getgenv().Aimbot
-local Settings, FOVSettings, Functions = Aimbot.Settings, Aimbot.FOVSettings, Aimbot.Functions
+local LocalPlayer = Players.LocalPlayer
+local Title = "Exunys Developer"
+local FileNames = {"Aimbot", "Configuration.json", "Drawing.json"}
+local Typing, Running, Animation, RequiredDistance, ServiceConnections = false, false, nil, 2000, {}
 
-local Library = loadstring(game:GetObjects("rbxassetid://7657867786")[1].Source)() -- Pepsi's UI Library
+--// Support Functions
 
-local Parts = {"Head", "HumanoidRootPart", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg", "LeftHand", "RightHand", "LeftLowerArm", "RightLowerArm", "LeftUpperArm", "RightUpperArm", "LeftFoot", "LeftLowerLeg", "UpperTorso", "LeftUpperLeg", "RightFoot", "RightLowerLeg", "LowerTorso", "RightUpperLeg"}
+local mousemoverel = mousemoverel or (Input and Input.MouseMove)
+local queueonteleport = queue_on_teleport or syn.queue_on_teleport
 
---// Frame
+--// Script Settings
 
-Library.UnloadCallback = Functions.Exit
+Environment.Settings = {
+	SendNotifications = true,
+	SaveSettings = true, -- Re-execute upon changing
+	ReloadOnTeleport = true,
+	Enabled = true,
+	TeamCheck = false,
+	AliveCheck = true,
+	WallCheck = false, -- Laggy
+	Sensitivity = 0, -- Animation length (in seconds) before fully locking onto target
+	ThirdPerson = false, -- Uses mousemoverel instead of CFrame to support locking in third person (could be choppy)
+	ThirdPersonSensitivity = 3, -- Boundary: 0.1 - 5
+	TriggerKey = "MouseButton2",
+	Toggle = false,
+	LockPart = "Head" -- Body part to lock on
+}
 
-local MainFrame = Library:CreateWindow({
-	Name = "Aimbot V2",
-	Themeable = {
-		Image = "7059346386",
-		Info = "Made by Aegians\nPowered by Pepsi's UI Library",
-		Credit = false
-	},
-	Background = "",
-	Theme = [[{"__Designer.Colors.section":"ADC7FF","__Designer.Colors.topGradient":"1B242F","__Designer.Settings.ShowHideKey":"Enum.KeyCode.RightShift","__Designer.Colors.otherElementText":"54637D","__Designer.Colors.hoveredOptionBottom":"38667D","__Designer.Background.ImageAssetID":"","__Designer.Colors.unhoveredOptionTop":"407495","__Designer.Colors.innerBorder":"2C4168","__Designer.Colors.unselectedOption":"4E6EA0","__Designer.Background.UseBackgroundImage":true,"__Designer.Files.WorkspaceFile":"Aimbot V2","__Designer.Colors.main":"23A0FF","__Designer.Colors.outerBorder":"162943","__Designer.Background.ImageColor":"FFFFFF","__Designer.Colors.tabText":"C9DFF1","__Designer.Colors.elementBorder":"111D26","__Designer.Colors.sectionBackground":"0E141C","__Designer.Colors.selectedOption":"558AC2","__Designer.Colors.background":"11182A","__Designer.Colors.bottomGradient":"202B42","__Designer.Background.ImageTransparency":95,"__Designer.Colors.hoveredOptionTop":"4885A0","__Designer.Colors.elementText":"7692B8","__Designer.Colors.unhoveredOptionBottom":"5471C4"}]]
-})
+Environment.FOVSettings = {
+	Enabled = true,
+	Visible = true,
+	Amount = 90,
+	Color = "255, 255, 255",
+	LockedColor = "255, 70, 70",
+	Transparency = 0.5,
+	Sides = 60,
+	Thickness = 1,
+	Filled = false
+}
 
---// Tabs
+Environment.FOVCircle = Drawing.new("Circle")
+Environment.Locked = nil
 
-local SettingsTab = MainFrame:CreateTab({
-	Name = "Settings"
-})
+--// Core Functions
 
-local FOVSettingsTab = MainFrame:CreateTab({
-	Name = "FOV Settings"
-})
+local function Encode(Table)
+	if Table and type(Table) == "table" then
+		local EncodedTable = HttpService:JSONEncode(Table)
 
-local FunctionsTab = MainFrame:CreateTab({
-	Name = "Functions"
-})
-
---// Settings - Sections
-
-local Values = SettingsTab:CreateSection({
-	Name = "Values"
-})
-
-local Checks = SettingsTab:CreateSection({
-	Name = "Checks"
-})
-
-local ThirdPerson = SettingsTab:CreateSection({
-	Name = "Third Person"
-})
-
---// FOV Settings - Sections
-
-local FOV_Values = FOVSettingsTab:CreateSection({
-	Name = "Values"
-})
-
-local FOV_Appearance = FOVSettingsTab:CreateSection({
-	Name = "Appearance"
-})
-
---// Functions - Sections
-
-local FunctionsSection = FunctionsTab:CreateSection({
-	Name = "Functions"
-})
-
---// Settings / Values
-
-Values:AddToggle({
-	Name = "Enabled",
-	Value = Settings.Enabled,
-	Callback = function(New, Old)
-		Settings.Enabled = New
+		return EncodedTable
 	end
-}).Default = Settings.Enabled
+end
 
-Values:AddToggle({
-	Name = "Toggle",
-	Value = Settings.Toggle,
-	Callback = function(New, Old)
-		Settings.Toggle = New
+local function Decode(String)
+	if String and type(String) == "string" then
+		local DecodedTable = HttpService:JSONDecode(String)
+
+		return DecodedTable
 	end
-}).Default = Settings.Toggle
+end
 
-Settings.LockPart = Parts[1]; Values:AddDropdown({
-	Name = "Lock Part",
-	Value = Parts[1],
-	Callback = function(New, Old)
-		Settings.LockPart = New
-	end,
-	List = Parts,
-	Nothing = "Head"
-}).Default = Parts[1]
+local function GetColor(Color)
+	local R = tonumber(string.match(Color, "([%d]+)[%s]*,[%s]*[%d]+[%s]*,[%s]*[%d]+"))
+	local G = tonumber(string.match(Color, "[%d]+[%s]*,[%s]*([%d]+)[%s]*,[%s]*[%d]+"))
+	local B = tonumber(string.match(Color, "[%d]+[%s]*,[%s]*[%d]+[%s]*,[%s]*([%d]+)"))
 
-Values:AddTextbox({ -- Using a Textbox instead of a Keybind because the UI Library doesn't support Mouse inputs like Left Click / Right Click...
-	Name = "Hotkey",
-	Value = Settings.TriggerKey,
-	Callback = function(New, Old)
-		Settings.TriggerKey = New
+	return Color3.fromRGB(R, G, B)
+end
+
+local function SendNotification(TitleArg, DescriptionArg, DurationArg)
+	if Environment.Settings.SendNotifications then
+		StarterGui:SetCore("SendNotification", {
+			Title = TitleArg,
+			Text = DescriptionArg,
+			Duration = DurationArg
+		})
 	end
-}).Default = Settings.TriggerKey
+end
 
---[[
-Values:AddKeybind({
-	Name = "Hotkey",
-	Value = Settings.TriggerKey,
-	Callback = function(New, Old)
-		Settings.TriggerKey = stringmatch(tostring(New), "Enum%.[UserInputType]*[KeyCode]*%.(.+)")
-	end,
-}).Default = Settings.TriggerKey
-]]
+--// Functions
 
-Values:AddSlider({
-	Name = "Sensitivity",
-	Value = Settings.Sensitivity,
-	Callback = function(New, Old)
-		Settings.Sensitivity = New
-	end,
-	Min = 0,
-	Max = 1,
-	Decimals = 2
-}).Default = Settings.Sensitivity
+local function SaveSettings()
+	if Environment.Settings.SaveSettings then
+		if isfile(Title.."/"..FileNames[1].."/"..FileNames[2]) then
+			writefile(Title.."/"..FileNames[1].."/"..FileNames[2], Encode(Environment.Settings))
+		end
 
---// Settings / Checks
-
-Checks:AddToggle({
-	Name = "Team Check",
-	Value = Settings.TeamCheck,
-	Callback = function(New, Old)
-		Settings.TeamCheck = New
+		if isfile(Title.."/"..FileNames[1].."/"..FileNames[3]) then
+			writefile(Title.."/"..FileNames[1].."/"..FileNames[3], Encode(Environment.FOVSettings))
+		end
 	end
-}).Default = Settings.TeamCheck
+end
 
-Checks:AddToggle({
-	Name = "Wall Check",
-	Value = Settings.WallCheck,
-	Callback = function(New, Old)
-		Settings.WallCheck = New
+local function GetClosestPlayer()
+	if not Environment.Locked then
+		if Environment.FOVSettings.Enabled then
+			RequiredDistance = Environment.FOVSettings.Amount
+		else
+			RequiredDistance = 2000
+		end
+
+		for _, v in next, Players:GetPlayers() do
+			if v ~= LocalPlayer then
+				if v.Character and v.Character:FindFirstChild(Environment.Settings.LockPart) and v.Character:FindFirstChildOfClass("Humanoid") then
+					if Environment.Settings.TeamCheck and v.Team == LocalPlayer.Team then continue end
+					if Environment.Settings.AliveCheck and v.Character:FindFirstChildOfClass("Humanoid").Health <= 0 then continue end
+					if Environment.Settings.WallCheck and #(Camera:GetPartsObscuringTarget({v.Character[Environment.Settings.LockPart].Position}, v.Character:GetDescendants())) > 0 then continue end
+
+					local Vector, OnScreen = Camera:WorldToViewportPoint(v.Character[Environment.Settings.LockPart].Position)
+					local Distance = (Vector2.new(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y) - Vector2.new(Vector.X, Vector.Y)).Magnitude
+
+					if Distance < RequiredDistance and OnScreen then
+						RequiredDistance = Distance
+						Environment.Locked = v
+					end
+				end
+			end
+		end
+	elseif (Vector2.new(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y) - Vector2.new(Camera:WorldToViewportPoint(Environment.Locked.Character[Environment.Settings.LockPart].Position).X, Camera:WorldToViewportPoint(Environment.Locked.Character[Environment.Settings.LockPart].Position).Y)).Magnitude > RequiredDistance then
+		Environment.Locked = nil
+		Animation:Cancel()
+		Environment.FOVCircle.Color = GetColor(Environment.FOVSettings.Color)
 	end
-}).Default = Settings.WallCheck
+end
 
-Checks:AddToggle({
-	Name = "Alive Check",
-	Value = Settings.AliveCheck,
-	Callback = function(New, Old)
-		Settings.AliveCheck = New
+--// Typing Check
+
+ServiceConnections.TypingStartedConnection = UserInputService.TextBoxFocused:Connect(function()
+	Typing = true
+end)
+
+ServiceConnections.TypingEndedConnection = UserInputService.TextBoxFocusReleased:Connect(function()
+	Typing = false
+end)
+
+--// Create, Save & Load Settings
+
+if Environment.Settings.SaveSettings then
+	if not isfolder(Title) then
+		makefolder(Title)
 	end
-}).Default = Settings.AliveCheck
 
---// Settings / ThirdPerson
-
-ThirdPerson:AddToggle({
-	Name = "Enable Third Person",
-	Value = Settings.ThirdPerson,
-	Callback = function(New, Old)
-		Settings.ThirdPerson = New
+	if not isfolder(Title.."/"..FileNames[1]) then
+		makefolder(Title.."/"..FileNames[1])
 	end
-}).Default = Settings.ThirdPerson
 
-ThirdPerson:AddSlider({
-	Name = "Sensitivity",
-	Value = Settings.ThirdPersonSensitivity,
-	Callback = function(New, Old)
-		Settings.ThirdPersonSensitivity = New
-	end,
-	Min = 0.1,
-	Max = 5,
-	Decimals = 1
-}).Default = Settings.ThirdPersonSensitivity
-
---// FOV Settings / Values
-
-FOV_Values:AddToggle({
-	Name = "Enabled",
-	Value = FOVSettings.Enabled,
-	Callback = function(New, Old)
-		FOVSettings.Enabled = New
+	if not isfile(Title.."/"..FileNames[1].."/"..FileNames[2]) then
+		writefile(Title.."/"..FileNames[1].."/"..FileNames[2], Encode(Environment.Settings))
+	else
+		Environment.Settings = Decode(readfile(Title.."/"..FileNames[1].."/"..FileNames[2]))
 	end
-}).Default = FOVSettings.Enabled
 
-FOV_Values:AddToggle({
-	Name = "Visible",
-	Value = FOVSettings.Visible,
-	Callback = function(New, Old)
-		FOVSettings.Visible = New
+	if not isfile(Title.."/"..FileNames[1].."/"..FileNames[3]) then
+		writefile(Title.."/"..FileNames[1].."/"..FileNames[3], Encode(Environment.FOVSettings))
+	else
+		Environment.Visuals = Decode(readfile(Title.."/"..FileNames[1].."/"..FileNames[3]))
 	end
-}).Default = FOVSettings.Visible
 
-FOV_Values:AddSlider({
-	Name = "Amount",
-	Value = FOVSettings.Amount,
-	Callback = function(New, Old)
-		FOVSettings.Amount = New
-	end,
-	Min = 10,
-	Max = 300
-}).Default = FOVSettings.Amount
-
---// FOV Settings / Appearance
-
-FOV_Appearance:AddToggle({
-	Name = "Filled",
-	Value = FOVSettings.Filled,
-	Callback = function(New, Old)
-		FOVSettings.Filled = New
+	coroutine.wrap(function()
+		while wait(10) and Environment.Settings.SaveSettings do
+			SaveSettings()
+		end
+	end)()
+else
+	if isfolder(Title) then
+		delfolder(Title)
 	end
-}).Default = FOVSettings.Filled
+end
 
-FOV_Appearance:AddSlider({
-	Name = "Transparency",
-	Value = FOVSettings.Transparency,
-	Callback = function(New, Old)
-		FOVSettings.Transparency = New
-	end,
-	Min = 0,
-	Max = 1,
-	Decimal = 1
-}).Default = FOVSettings.Transparency
+local function Load()
+	ServiceConnections.RenderSteppedConnection = RunService.RenderStepped:Connect(function()
+		if Environment.FOVSettings.Enabled and Environment.Settings.Enabled then
+			Environment.FOVCircle.Radius = Environment.FOVSettings.Amount
+			Environment.FOVCircle.Thickness = Environment.FOVSettings.Thickness
+			Environment.FOVCircle.Filled = Environment.FOVSettings.Filled
+			Environment.FOVCircle.NumSides = Environment.FOVSettings.Sides
+			Environment.FOVCircle.Color = GetColor(Environment.FOVSettings.Color)
+			Environment.FOVCircle.Transparency = Environment.FOVSettings.Transparency
+			Environment.FOVCircle.Visible = Environment.FOVSettings.Visible
+			Environment.FOVCircle.Position = Vector2.new(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y)
+		else
+			Environment.FOVCircle.Visible = false
+		end
 
-FOV_Appearance:AddSlider({
-	Name = "Sides",
-	Value = FOVSettings.Sides,
-	Callback = function(New, Old)
-		FOVSettings.Sides = New
-	end,
-	Min = 3,
-	Max = 60
-}).Default = FOVSettings.Sides
+		if Running and Environment.Settings.Enabled then
+			GetClosestPlayer()
 
-FOV_Appearance:AddSlider({
-	Name = "Thickness",
-	Value = FOVSettings.Thickness,
-	Callback = function(New, Old)
-		FOVSettings.Thickness = New
-	end,
-	Min = 1,
-	Max = 50
-}).Default = FOVSettings.Thickness
+			if Environment.Settings.ThirdPerson then
+				Environment.Settings.ThirdPersonSensitivity = math.clamp(Environment.Settings.ThirdPersonSensitivity, 0.1, 5)
 
-FOV_Appearance:AddColorpicker({
-	Name = "Color",
-	Value = FOVSettings.Color,
-	Callback = function(New, Old)
-		FOVSettings.Color = New
+				local Vector = Camera:WorldToViewportPoint(Environment.Locked.Character[Environment.Settings.LockPart].Position)
+				mousemoverel((Vector.X - UserInputService:GetMouseLocation().X) * Environment.Settings.ThirdPersonSensitivity, (Vector.Y - UserInputService:GetMouseLocation().Y) * Environment.Settings.ThirdPersonSensitivity)
+			else
+				if Environment.Settings.Sensitivity > 0 then
+					Animation = TweenService:Create(Camera, TweenInfo.new(Environment.Settings.Sensitivity, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {CFrame = CFrame.new(Camera.CFrame.Position, Environment.Locked.Character[Environment.Settings.LockPart].Position)})
+					Animation:Play()
+				else
+					Camera.CFrame = CFrame.new(Camera.CFrame.Position, Environment.Locked.Character[Environment.Settings.LockPart].Position)
+				end
+			end
+
+			Environment.FOVCircle.Color = GetColor(Environment.FOVSettings.LockedColor)
+		end
+	end)
+
+	ServiceConnections.InputBeganConnection = UserInputService.InputBegan:Connect(function(Input)
+		if not Typing then
+			pcall(function()
+				if Input.KeyCode == Enum.KeyCode[Environment.Settings.TriggerKey] then
+					if Environment.Settings.Toggle then
+						Running = not Running
+
+						if not Running then
+							Environment.Locked = nil
+							Animation:Cancel()
+							Environment.FOVCircle.Color = GetColor(Environment.FOVSettings.Color)
+						end
+					else
+						Running = true
+					end
+				end
+			end)
+
+			pcall(function()
+				if Input.UserInputType == Enum.UserInputType[Environment.Settings.TriggerKey] then
+					if Environment.Settings.Toggle then
+						Running = not Running
+
+						if not Running then
+							Environment.Locked = nil
+							Animation:Cancel()
+							Environment.FOVCircle.Color = GetColor(Environment.FOVSettings.Color)
+						end
+					else
+						Running = true
+					end
+				end
+			end)
+		end
+	end)
+
+	ServiceConnections.InputEndedConnection = UserInputService.InputEnded:Connect(function(Input)
+		if not Typing then
+			pcall(function()
+				if Input.KeyCode == Enum.KeyCode[Environment.Settings.TriggerKey] then
+					if not Environment.Settings.Toggle then
+						Running = false
+						Environment.Locked = nil
+						Animation:Cancel()
+						Environment.FOVCircle.Color = GetColor(Environment.FOVSettings.Color)
+					end
+				end
+			end)
+
+			pcall(function()
+				if Input.UserInputType == Enum.UserInputType[Environment.Settings.TriggerKey] then
+					if not Environment.Settings.Toggle then
+						Running = false
+						Environment.Locked = nil
+						Animation:Cancel()
+						Environment.FOVCircle.Color = GetColor(Environment.FOVSettings.Color)
+					end
+				end
+			end)
+		end
+	end)
+end
+
+--// Functions
+
+Environment.Functions = {}
+
+function Environment.Functions:Exit()
+	SaveSettings()
+
+	for _, v in next, ServiceConnections do
+		v:Disconnect()
 	end
-}).Default = FOVSettings.Color
 
-FOV_Appearance:AddColorpicker({
-	Name = "Locked Color",
-	Value = FOVSettings.LockedColor,
-	Callback = function(New, Old)
-		FOVSettings.LockedColor = New
+	if Environment.FOVCircle.Remove then Environment.FOVCircle:Remove() end
+
+	getgenv().Aimbot.Functions = nil
+	getgenv().Aimbot = nil
+end
+
+function Environment.Functions:Restart()
+	SaveSettings()
+
+	for _, v in next, ServiceConnections do
+		v:Disconnect()
 	end
-}).Default = FOVSettings.LockedColor
 
---// Functions / Functions
+	Load()
+end
 
-FunctionsSection:AddButton({
-	Name = "Reset Settings",
-	Callback = function()
-		Functions.ResetSettings()
-		Library.ResetAll()
+function Environment.Functions:ResetSettings()
+	Environment.Settings = {
+		SendNotifications = true,
+		SaveSettings = true, -- Re-execute upon changing
+		ReloadOnTeleport = true,
+		Enabled = true,
+		TeamCheck = false,
+		AliveCheck = true,
+		WallCheck = false,
+		Sensitivity = 0, -- Animation length (in seconds) before fully locking onto target
+		ThirdPerson = false,
+		ThirdPersonSensitivity = 3,
+		TriggerKey = "MouseButton2",
+		Toggle = false,
+		LockPart = "Head" -- Body part to lock on
+	}
+
+	Environment.FOVSettings = {
+		Enabled = true,
+		Visible = true,
+		Amount = 90,
+		Color = "255, 255, 255",
+		LockedColor = "255, 70, 70",
+		Transparency = 0.5,
+		Sides = 60,
+		Thickness = 1,
+		Filled = false
+	}
+end
+
+--// Support Check
+
+if not Drawing or not getgenv then
+	SendNotification(Title, "Your exploit does not support this script", 3); return
+end
+
+--// Reload On Teleport
+
+if Environment.Settings.ReloadOnTeleport then
+	if queueonteleport then
+		queueonteleport(game:HttpGet("https://raw.githubusercontent.com/Exunys/Aimbot-V2/main/Resources/Scripts/Main.lua"))
+	else
+		SendNotification(Title, "Your exploit does not support \"syn.queue_on_teleport()\"")
 	end
-})
+end
 
-FunctionsSection:AddButton({
-	Name = "Restart",
-	Callback = Functions.Restart
-})
+--// Load
 
-FunctionsSection:AddButton({
-	Name = "Exit",
-	Callback = function()
-		Functions:Exit()
-		Library.Unload()
-	end
-})
-
-FunctionsSection:AddButton({
-	Name = "Copy Script Page",
-	Callback = function()
-		setclipboard("https://github.com/Exunys/Aimbot-V2")
-	end
-})
+Load(); SendNotification(Title, "Aimbot script successfully loaded! Check the GitHub page on how to configure the script.", 5)
