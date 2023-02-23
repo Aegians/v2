@@ -27,7 +27,7 @@ local MainFrame = Library:CreateWindow({
 	Name = "Aimbot V2",
 	Themeable = {
 		Image = "7059346386",
-		Info = "Made by Exunys\nPowered by Pepsi's UI Library",
+		Info = "Made by Aegians\nPowered by Pepsi's UI Library",
 		Credit = false
 	},
 	Background = "",
@@ -293,6 +293,6 @@ FunctionsSection:AddButton({
 FunctionsSection:AddButton({
 	Name = "Copy Script Page",
 	Callback = function()
-		setclipboard("https://github.com/Exunys/Aimbot-V2")
+		setclipboard("https://github.com/Aegians/v2")
 	end
 })
